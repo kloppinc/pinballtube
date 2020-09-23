@@ -17,7 +17,6 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
@@ -33,6 +32,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define RAM_SIZE 0x2000
+#define TEST_MODE
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,17 +45,22 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
+DMA_HandleTypeDef hdma_spi1_rx;
+DMA_HandleTypeDef hdma_spi1_tx;
 
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-uint8_t Pinball_RAM[0x2000];
+
+uint8_t Pinball_RAM[RAM_SIZE];
+uint8_t RX_buffer[RAM_SIZE];
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
@@ -61,6 +69,7 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
 
 /* USER CODE END 0 */
 
@@ -92,9 +101,20 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+
+  //Fill RAM with dummy Data
+  for(int i=0;i<RAM_SIZE;i++){
+  	Pinball_RAM[i]=i&0xFF;
+  }
+
+ // HAL_SPI_Transmit_DMA(&hspi1, Pinball_RAM, RAM_SIZE);
+  //HAL_GPIO_WritePin(NSS_GPIO_Port, NSS_Pin, 1);
+  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin,1);
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin,0);
 
   /* USER CODE END 2 */
 
@@ -105,6 +125,25 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	 // HAL_GPIO_WritePin(NSS_GPIO_Port, NSS_Pin, 0);
+	  //HAL_SPI_Receive(&hspi1, Pinball_RAM, RAM_SIZE, 5000);
+	  //HAL_SPI_TransmitReceive_DMA(&hspi1, Pinball_RAM, RX_buffer, RAM_SIZE);
+#ifdef TEST_MODE
+	  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+	  HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+
+	  if(HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin)){
+		  HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, 1);
+		  HAL_Delay(100);
+	  }
+	  else{
+		  HAL_Delay(20);
+		  HAL_GPIO_WritePin(EN_5V_GPIO_Port, EN_5V_Pin, 0);
+		  HAL_UART_Transmit(&huart1, RX_buffer, 10, 1000);
+	  }
+	  HAL_UART_Receive(&huart1, RX_buffer, 10, 10);
+#endif
+
   }
   /* USER CODE END 3 */
 }
@@ -118,7 +157,8 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
@@ -130,7 +170,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -168,7 +208,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_HARD_INPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -217,6 +257,25 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+  /* DMA1_Channel3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -243,11 +302,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : RW_Pin _5V_SNS_Pin D0_Pin D1_Pin 
-                           D2_Pin D3_Pin D4_Pin D5_Pin 
+  /*Configure GPIO pins : RW_Pin _5V_SNS_Pin D0_Pin D1_Pin
+                           D2_Pin D3_Pin D4_Pin D5_Pin
                            D6_Pin D7_Pin IRQ_Pin FIRQ_Pin */
-  GPIO_InitStruct.Pin = RW_Pin|_5V_SNS_Pin|D0_Pin|D1_Pin 
-                          |D2_Pin|D3_Pin|D4_Pin|D5_Pin 
+  GPIO_InitStruct.Pin = RW_Pin|_5V_SNS_Pin|D0_Pin|D1_Pin
+                          |D2_Pin|D3_Pin|D4_Pin|D5_Pin
                           |D6_Pin|D7_Pin|IRQ_Pin|FIRQ_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -263,7 +322,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : _5V_SENSE_Pin */
   GPIO_InitStruct.Pin = _5V_SENSE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(_5V_SENSE_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED1_Pin LED2_Pin EN_5V_Pin */
   GPIO_InitStruct.Pin = LED1_Pin|LED2_Pin|EN_5V_Pin;
@@ -272,13 +331,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : A0_Pin A1_Pin A2_Pin A10_Pin 
-                           A11_Pin A12_Pin A13_Pin A14_Pin 
-                           A15_Pin A3_Pin A4_Pin A5_Pin 
+  /*Configure GPIO pins : A0_Pin A1_Pin A2_Pin A10_Pin
+                           A11_Pin A12_Pin A13_Pin A14_Pin
+                           A15_Pin A3_Pin A4_Pin A5_Pin
                            A6_Pin A7_Pin A8_Pin A9_Pin */
-  GPIO_InitStruct.Pin = A0_Pin|A1_Pin|A2_Pin|A10_Pin 
-                          |A11_Pin|A12_Pin|A13_Pin|A14_Pin 
-                          |A15_Pin|A3_Pin|A4_Pin|A5_Pin 
+  GPIO_InitStruct.Pin = A0_Pin|A1_Pin|A2_Pin|A10_Pin
+                          |A11_Pin|A12_Pin|A13_Pin|A14_Pin
+                          |A15_Pin|A3_Pin|A4_Pin|A5_Pin
                           |A6_Pin|A7_Pin|A8_Pin|A9_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -324,7 +383,7 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{ 
+{
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
