@@ -115,6 +115,7 @@ void Error_Handler(void);
 #define EN_5V_GPIO_Port GPIOA
 #define SW1_Pin GPIO_PIN_15
 #define SW1_GPIO_Port GPIOA
+#define SW1_EXTI_IRQn EXTI15_10_IRQn
 #define FIRQ_Pin GPIO_PIN_10
 #define FIRQ_GPIO_Port GPIOC
 #define RESET_Pin GPIO_PIN_11

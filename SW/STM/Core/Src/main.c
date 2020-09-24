@@ -22,19 +22,23 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdbool.h"
+#include "stdio.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+struct flags {
+  bool SPI_cmplt : 1;
+};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
 #define RAM_SIZE 0x2000
-#define TEST_MODE
+//#define TEST_MODE
 
 /* USER CODE END PD */
 
@@ -52,8 +56,9 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 
-uint8_t Pinball_RAM[RAM_SIZE];
+uint8_t pinball_RAM[RAM_SIZE];
 uint8_t RX_buffer[RAM_SIZE];
+struct flags myflags;
 
 /* USER CODE END PV */
 
@@ -80,7 +85,9 @@ static void MX_USART1_UART_Init(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	uint16_t  address;
+	uint8_t command;
+	uint8_t TX_buffer[25];
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -107,14 +114,18 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   //Fill RAM with dummy Data
+
+  //One morning, when Gregor Samsa woke from troubled dreams, he found himself transformed in his bed into a horrible vermin. He lay on his armour-like back, and if he lifted his head a little he could see his brown belly, slightly domed and divided by arches
   for(int i=0;i<RAM_SIZE;i++){
-  	Pinball_RAM[i]=i&0xFF;
+  	pinball_RAM[i]=i&0xFF;
   }
 
  // HAL_SPI_Transmit_DMA(&hspi1, Pinball_RAM, RAM_SIZE);
   //HAL_GPIO_WritePin(NSS_GPIO_Port, NSS_Pin, 1);
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin,1);
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin,0);
+
+  HAL_SPI_Receive_IT(&hspi1, RX_buffer, 3);
 
   /* USER CODE END 2 */
 
@@ -125,8 +136,29 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	 // HAL_GPIO_WritePin(NSS_GPIO_Port, NSS_Pin, 0);
-	  //HAL_SPI_Receive(&hspi1, Pinball_RAM, RAM_SIZE, 5000);
+
+	  if(myflags.SPI_cmplt){
+		  myflags.SPI_cmplt=0;
+		  address=(RX_buffer[1]<<8)|RX_buffer[2];
+		  command=RX_buffer[0];
+		  switch(command){
+		  case 1:   HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+			        break;
+		  case 2:
+			  	  	break;
+		  case 3: 	//HAL_SPI_Transmit_IT(&hspi1, Pinball_RAM, Size)
+			  	  	HAL_SPI_Receive_IT(&hspi1, RX_buffer, 3);
+			  	  	sprintf(TX_buffer,"address: 0x%04x=",address);
+			  	  	HAL_UART_Transmit(&huart1, TX_buffer, strlen(TX_buffer), 100);
+			  	  	uint32_t temp=&pinball_RAM;
+			  	  	temp+=address;
+			  	  	HAL_UART_Transmit(&huart1, temp, 1, 100);
+			  	  	HAL_UART_Transmit(&huart1, "\n\r", 2, 100);
+		  	  	  	break;
+		  }
+
+	  }
+
 	  //HAL_SPI_TransmitReceive_DMA(&hspi1, Pinball_RAM, RX_buffer, RAM_SIZE);
 #ifdef TEST_MODE
 	  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
@@ -345,7 +377,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : SW1_Pin */
   GPIO_InitStruct.Pin = SW1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(SW1_GPIO_Port, &GPIO_InitStruct);
 
@@ -359,6 +391,23 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	switch(GPIO_Pin){
+		case SW1_Pin:	HAL_UART_Transmit(&huart1, "SW1 Interrupt\n\r", 17, 100);
+						break;
+		case Q_Pin:		HAL_UART_Transmit(&huart1, "Q   Interrupt\n\r", 17, 100);
+						break;
+		case E_Pin:		HAL_UART_Transmit(&huart1, "E   Interrupt\n\r", 17, 100);
+						break;
+		default:;
+	}
+
+}
+
+void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi){
+	myflags.SPI_cmplt=1;
+}
 
 /* USER CODE END 4 */
 
