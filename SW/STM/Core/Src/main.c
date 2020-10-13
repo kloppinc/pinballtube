@@ -37,7 +37,7 @@ struct flags {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define RAM_SIZE 0x2000
+#define RAM_SIZE 0x4000
 //#define TEST_MODE
 
 /* USER CODE END PD */
@@ -57,7 +57,7 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 
 uint8_t pinball_RAM[RAM_SIZE];
-uint8_t dummy_RAM[RAM_SIZE];
+//uint8_t dummy_RAM[RAM_SIZE];
 uint8_t RX_buffer[10];
 uint8_t TX_buffer[25];
 struct flags myflags;
@@ -90,6 +90,9 @@ int main(void)
 	uint16_t  address;
 	uint8_t command;
 	uint32_t startaddress;
+
+	uint8_t data_bus;
+	uint16_t address_bus;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -119,7 +122,7 @@ int main(void)
 
   //One morning, when Gregor Samsa woke from troubled dreams, he found himself transformed in his bed into a horrible vermin. He lay on his armour-like back, and if he lifted his head a little he could see his brown belly, slightly domed and divided by arches
   for(int i=0;i<RAM_SIZE;i++){
-  	dummy_RAM[i]=i&0xFF;
+  	//dummy_RAM[i]=i&0xFF;
   }
 
  // HAL_SPI_Transmit_DMA(&hspi1, Pinball_RAM, RAM_SIZE);
@@ -139,7 +142,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  HAL_GPIO_WritePin(GPIO1_GPIO_Port, GPIO1_Pin,0);
+	  //HAL_GPIO_WritePin(GPIO1_GPIO_Port, GPIO1_Pin,0);
 /*	  if(myflags.SPI_cmplt){
 		  myflags.SPI_cmplt=0;
 
@@ -169,7 +172,7 @@ int main(void)
 		  }
 	  }*/
 
-
+	  //HAL_GPIO_TogglePin(GPIO1_GPIO_Port, GPIO1_Pin);
 #ifdef TEST_MODE
 	  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 	  HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
@@ -185,11 +188,22 @@ int main(void)
 	  }
 	  HAL_UART_Receive(&huart1, RX_buffer, 10, 10);
 #else
-	  HAL_Delay(5);
-	  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
-	  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
+//	  HAL_Delay(5);
+//	  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 1);
+//	  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
 #endif
 
+	  						//HAL_UART_Transmit(&huart1, "Q   Interrupt\n\r", 17, 100);
+	  if(!HAL_GPIO_ReadPin(Q_GPIO_Port, Q_Pin)){
+		  HAL_GPIO_WritePin(GPIO1_GPIO_Port, GPIO1_Pin,0);
+		  address_bus=A0_GPIO_Port->IDR&0xffff;
+		  if(address_bus<RAM_SIZE){
+			  data_bus=D0_GPIO_Port->IDR&0xff;
+			  pinball_RAM[address_bus]=data_bus;
+		  }
+		  //HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
+		  HAL_GPIO_WritePin(GPIO1_GPIO_Port, GPIO1_Pin,1);
+	  }
 
   }
   /* USER CODE END 3 */
@@ -351,10 +365,12 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : RW_Pin _5V_SNS_Pin D0_Pin D1_Pin
                            D2_Pin D3_Pin D4_Pin D5_Pin
-                           D6_Pin D7_Pin IRQ_Pin FIRQ_Pin */
+                           D6_Pin D7_Pin IRQ_Pin FIRQ_Pin
+                           Q_Pin */
   GPIO_InitStruct.Pin = RW_Pin|_5V_SNS_Pin|D0_Pin|D1_Pin
                           |D2_Pin|D3_Pin|D4_Pin|D5_Pin
-                          |D6_Pin|D7_Pin|IRQ_Pin|FIRQ_Pin;
+                          |D6_Pin|D7_Pin|IRQ_Pin|FIRQ_Pin
+                          |Q_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -363,7 +379,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = GPIO1_Pin|GPIO2_Pin|GPIO3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pin : _5V_SENSE_Pin */
@@ -402,21 +418,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(SW1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : RESET_Pin Q_Pin */
-  GPIO_InitStruct.Pin = RESET_Pin|Q_Pin;
+  /*Configure GPIO pin : RESET_Pin */
+  GPIO_InitStruct.Pin = RESET_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(RESET_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure peripheral I/O remapping */
   __HAL_AFIO_REMAP_PD01_ENABLE();
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
@@ -425,20 +434,24 @@ static void MX_GPIO_Init(void)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	static uint8_t data_bus;
 	static uint16_t address_bus;
-
-	switch(GPIO_Pin){
+	HAL_GPIO_WritePin(GPIO1_GPIO_Port, GPIO1_Pin,1);
+/*	switch(GPIO_Pin){
 		case SW1_Pin:	//HAL_UART_Transmit(&huart1, "SW1 Interrupt\n\r", 17, 100);
 						break;
-		case Q_Pin:		/* leading edge of Q: address valid */
+		case Q_Pin:		// leading edge of Q: address valid
 						//HAL_UART_Transmit(&huart1, "Q   Interrupt\n\r", 17, 100);
 						address_bus=A0_GPIO_Port->IDR&0xffff;
 						if(address_bus>=RAM_SIZE)address_bus=RAM_SIZE-1;
+
 						break;
-		case E_Pin:		/* falling edge of E: data latch */
+		case E_Pin:		// falling edge of E: data latch
 						//HAL_UART_Transmit(&huart1, "E   Interrupt\n\r", 17, 100);
 						data_bus=D0_GPIO_Port->IDR&0xff;
+						if(address_bus==0x18c1){
+							address_bus++;
+						}
 						pinball_RAM[address_bus]=data_bus;
-						HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
+						//HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
 						break;
 		case NSS_Pin:	if (HAL_GPIO_ReadPin(NSS_GPIO_Port, NSS_Pin)){	//Rising edgde
 							HAL_SPI_DMAStop(&hspi1);
@@ -451,11 +464,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 							//HAL_SPI_Transmit_DMA(&hspi1, pinball_RAM, RAM_SIZE);
 							HAL_SPI_Transmit_DMA(&hspi1, dummy_RAM, RAM_SIZE);
 							HAL_GPIO_WritePin(GPIO1_GPIO_Port, GPIO1_Pin,1);
-							HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
+							//HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
 						}
 						break;
 		default:;
-	}
+	}*/
+	HAL_GPIO_WritePin(GPIO1_GPIO_Port, GPIO1_Pin,0);
 
 }
 
